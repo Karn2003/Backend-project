@@ -1,5 +1,5 @@
 import { v2 as cloudinary } from "cloudinary";
-import fs from "fs";
+import fs from "node:fs";
 
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -16,8 +16,10 @@ const uploadOnCloudinary = async (localFilePath) => {
     console.log("file upload succesfully on cloudinary ", responce.url);
     return responce
   } catch (error) {
-    fs.unlink(localFilePath)
-    console.log("Error cloudinary :: file is deleted due to error in upload");
+    fs.unlink(localFilePath, (error) => {
+      console.log("Error cloudinary :: file is deleted due to error in upload: ", error);
+    })
+    
     return null
   }
 }

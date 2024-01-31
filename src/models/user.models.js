@@ -39,7 +39,7 @@ const userSchema = new Schema(
     },
     refreshToken: {
       type: Schema.Types.ObjectId,
-      ref: "Video",
+      //ref: "Video",
     },
   },
   {
@@ -58,6 +58,7 @@ userSchema.methods.isPasswordCorrect = async function(password){
 }
 
 userSchema.methods.generateAccessToken = function(){
+  //are short time activated compare to the refresh token
   return jwt.sign(
     {
       _id: this._id,
@@ -73,6 +74,7 @@ userSchema.methods.generateAccessToken = function(){
 }
 
 userSchema.methods.generateRefreshToken = function(){
+  //Long time activate them the access token and both access and refresh token used for the authentication like work and also use for how much active login session
   return jwt.sign(
     {
       _id: this._id,
@@ -87,5 +89,6 @@ userSchema.methods.generateRefreshToken = function(){
     }
   )
 }
+
 
 export const User = mongoose.model("User", userSchema);

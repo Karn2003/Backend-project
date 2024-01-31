@@ -10,10 +10,11 @@ app.use(
     credentials: true,
   })
 );
-app.use(express.json({limit: "16kb"}))
-app.use(express.urlencoded({extended: true, limit: "16kb"}))
-app.use(express.static("public"))
-app.use(cookieParser())
+app.use(express.json({limit: "16kb"}))//This is a built-in middleware function in Express. It parses incoming requests with JSON payloads and is based on body-parser.
+//app.use() used where we need to setting of middleware or configration
+app.use(express.urlencoded({extended: true, limit: "16kb"}))//urlencoded use for data accept from url and extended use for get data from object in object
+app.use(express.static("public"))//make a public assets 
+app.use(cookieParser())//access/set user cookies from browser
 
 
 //import router
