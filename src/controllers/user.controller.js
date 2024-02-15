@@ -1,7 +1,10 @@
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { ApiError } from "../utils/ApiError.js";
 import { User } from "../models/user.models.js";
-import { uploadOnCloudinary } from "../utils/cloudinary.js";
+import {
+  deleteFromCloudinary,
+  uploadOnCloudinary,
+} from "../utils/cloudinary.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import jwt from "jsonwebtoken";
 
@@ -223,4 +226,219 @@ const refreshAccessToken = asyncHandler(async (req, res) => {
     );
 });
 
-export { registerUser, loginUser, logoutUser, refreshAccessToken };
+const changeCurrentPassword = asyncHandler(async (req, res) => {
+  const { oldPassword, newPassword } = req.body;
+  const user = await User.findById(req.user?._id);
+  const isPasswordCorrect = await user.isPasswordCorrect(oldPassword);
+
+  if (!isPasswordCorrect) throw new ApiError(400, "Invalid old password");
+
+  user.password = newPassword;
+  await user.save({ validateBeforeSave: false });
+  return res
+    .status(200)
+    .json(new ApiResponse(200, {}, "Password update succesfully"));
+});
+
+const getCurrentUser = asyncHandler(async (req, res) => {
+  return res
+    .status(200)
+    .json(new ApiResponse(200, req.user, "current user fetched successfully"));
+});
+
+const updateAccountDetail = asyncHandler(async (req, res) => {
+  const { fullName, email } = req.body;
+  if (!fullName || !email) throw new ApiError(401, "All fileds are required");
+
+  const user = await User.findByIdAndUpdate(
+    req.user?._id,
+    {
+      $set: {
+        // set method is used to update passed parameter in the object
+        fullName,
+        email: email,
+      },
+    },
+    {
+      new: true, // return user object after updation
+    }
+  ).select("-password");
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, user, "Update account detail successfully"));
+});
+
+const updateAvatar = asyncHandler(async (req, res) => {
+  const avatarLocalPath = req.file?.url;
+  if (!avatarLocalPath) throw new ApiError(400, "avatar file is missing");
+
+  const avatar = await uploadOnCloudinary(avatarLocalPath);
+  if (!avatar.url) throw new ApiError(400, "error while upload on cloudinary");
+
+  const isDeleted = await deleteFromCloudinary(req.user?.avatar);
+  if (!isDeleted)
+    throw new ApiError(400, "error while delete old avatar from cloudinary");
+  const user = await User.findByIdAndUpdate(
+    req.user?._id,
+    {
+      $set: {
+        avatar: avatar.url,
+      },
+    },
+    {
+      new: true,
+    }
+  ).select("-password");
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, user, "avatar update succesfully"));
+});
+
+const updateCoverImage = asyncHandler(async (req, res) => {
+  const coverImageLocalPath = req.file?.url;
+  if (!coverImageLocalPath) throw new ApiError(400, "avatar file is missing");
+
+  const coverImage = await uploadOnCloudinary(coverImageLocalPath);
+  if (!coverImage.url)
+    throw new ApiError(400, "error while upload on cloudinary");
+
+  const user = await User.findByIdAndUpdate(
+    req.user?._id,
+    {
+      $set: {
+        avatar: coverImage.url,
+      },
+    },
+    {
+      new: true,
+    }
+  ).select("-password");
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, user, "cover image update succesfully"));
+});
+
+/* 
+aggregate pipeline: consist of one or more stages
+                    in aggregate pipeline code first stage filter document then that filterd document sent to the next stage.
+
+stages: $match, $set, $group
+
+$match => {} pass any object parameter and if match then filter that document
+
+$group => {} group the documents by passed arguments 
+
+$sum => {} calculate the total sum of passed para
+
+$lookup => Performs a left outer join to a collection in the same database to filter in documents from the "joined" collection for processing
+-adds a new array field to each input document. 
+{
+  from: (database to perform the join with.)
+  localField: (A filed that is an key of object of local table which you join (fileds uses with $ sign))
+  foreignField: (a filed of table passes in from)
+  as: (an array name which created by this stage)
+}
+
+$addFields: to add a new entry in existing document(database) object
+{
+  $filedName:{
+    $first: "array_name"//take arrays 0th element and add
+  }
+}
+
+$cond: check condition
+{
+  if: a condition
+  then: if condition is true then execute this
+  else: if not then else
+}
+
+$in: check in array or obj filed true or false and return boolean
+
+$project: return with added fields with 1 
+{
+  email: 1
+}
+*/
+
+const getChannelProfile = asyncHandler(async (req, res) => {
+  const { username } = req.params;
+  if (!username?.trim()) throw new ApiError(400, "username is missing");
+
+  const user = await User.aggregate([
+    {
+      $match: {
+        username: username?.toLowerCase(),
+      },
+    },
+    {
+      $lookup: {
+        //gives subscribers of channel
+        from: "subscriptions",
+        localField: "_id",
+        foreignField: "subscriber",
+        as: "subscribers",
+      },
+    },
+    {
+      $lookup: {
+        //gives a user has subscribe which channel
+        from: "subscriptions",
+        localField: "_id",
+        foreignField: "channel",
+        as: "subscriberTo",
+      },
+    },
+    {
+      $addFields: {
+        subscribers: {
+          $size: "$subscribers",
+        },
+        subscribeTo: {
+          $size: "$subscriberTo",
+        },
+        isSubscribed: {
+          $cond: {
+            if: { $in: [req.user?._id, "$subscribers.subscribe"] },
+            then: true,
+            else: false,
+          },
+        },
+      },
+    },
+    {
+      $project: {
+        fullName: 1,
+        username: 1,
+        email: 1,
+        avatar: 1,
+        coverImage: 1,
+        isSubscribed: 1,
+        subscribers: 1,
+        subscribeTo: 1,
+      },
+    },
+  ]);
+
+  if (!user?.length) throw new ApiError(400, "user count is zero");
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, user[0], "user profile retrived successfully"));
+});
+
+export {
+  registerUser,
+  loginUser,
+  logoutUser,
+  refreshAccessToken,
+  changeCurrentPassword,
+  getCurrentUser,
+  updateAccountDetail,
+  updateAvatar,
+  updateCoverImage,
+  getChannelProfile,
+};
